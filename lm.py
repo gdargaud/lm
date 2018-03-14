@@ -1,4 +1,4 @@
-#!/usr/bin/python
+#!/usr/bin/python3
 # -*- coding: utf-8 -*-
 
 """
@@ -32,9 +32,11 @@ import base64
 import codecs
 import locale
 import logging
-import cPickle
+#import cPickle     # Python2
+import _pickle as cPickle
 import argparse
-import xmlrpclib
+# import xmlrpclib  # Python2
+from xmlrpc import client
 from difflib import SequenceMatcher
 from unicodedata import normalize
 
@@ -95,9 +97,9 @@ def filelist( dir, recurs=True, *ext):
     result, alist = [], []
 
     for f in os.listdir(dir):
-        if not isinstance(f,unicode):
-            logger.warning("%s filename not properly encoded" % f)
-        else:
+#        if not isinstance(f,unicode):
+#            logger.warning("%s filename not properly encoded" % f)
+#        else:
             alist.append( os.path.abspath(os.path.join(dir,f)) )
 
     result.extend( [ f for f in filter( os.path.isfile, alist ) \
@@ -123,14 +125,14 @@ def hashFile(name):
         if filesize < 65536 * 2:
                 return "SizeError"
 
-        for x in range(65536/bytesize):
+        for x in range(65536//bytesize):
                 buffer = f.read(bytesize)
                 (l_value,)= struct.unpack(longlongformat, buffer)
                 hash += l_value
                 hash = hash & 0xFFFFFFFFFFFFFFFF #to remain as 64bit number
 
         f.seek(max(0,filesize-65536),0)
-        for x in range(65536/bytesize):
+        for x in range(65536//bytesize):
                 buffer = f.read(bytesize)
                 (l_value,)= struct.unpack(longlongformat, buffer)
                 hash += l_value
@@ -146,11 +148,11 @@ def hashFile(name):
 # keeps only ascii alpha numeric character
 def alphanum( string, fill=' ' ):
     string = to_ascii( string )
-    return re.sub( '[^a-zA-Z0-9]{1,}', fill, string ).strip()
+    return re.sub( '[^a-zA-Z0-9]{1,}', fill, string.decode('utf-8') ).strip()
 
 def to_ascii( string ):
-    if not isinstance( string, unicode ):
-        string = unicode(string,'cp850')
+#    if not isinstance( string, unicode ):
+#        string = str(string,'cp850')
     return normalize( 'NFKD', string ).encode('ascii', 'ignore')
 
 # boolean yes / no raw_input
@@ -206,8 +208,6 @@ def parse_arguments():
                     (don't use if you're listing a lot of files!)")
     parser.add_argument('-S', '--show', action="store_true",
             help="Show a sumup html page, with covers and usefull links")
-    parser.add_argument('--html-build', action="store_true",
-            help="Build HTML sumup page without display")
     parser.add_argument( 'files', nargs="*",
             help="media files to check, by default looks at current dir")
     parser.add_argument('--reset', action="store_true",
@@ -278,7 +278,7 @@ def decode_filter_phrase( filter_phrase ):
 
         ftype, fkeys = fs
 
-        if not filter_types.has_key(ftype):
+        if ftype not in filter_types:
             raise FilterParsingError("Keyword not recognized")
         else:
             ftype = filter_types[ftype]
@@ -291,7 +291,7 @@ def decode_filter_phrase( filter_phrase ):
             except:
                 raise FilterParsingError("Wrong syntax for size filtering")
 
-        if not result.has_key(ftype): result[ftype] = []
+        if ftype not in result: result[ftype] = []
 
         result[ftype].extend( fkeys )
 
@@ -343,10 +343,10 @@ class store(dict):
         if dict.__contains__(self,key) or not self.static:
             dict.__setitem__(self,key,val)
         else:
-            raise KeyError, str(key) + " not in store keys"
+            raise KeyError(str(key) + " not in store keys")
 
     def update(self, *args, **kwargs):
-        for k, v in dict( *args, **kwargs ).iteritems():
+        for k, v in dict( *args, **kwargs ).items():
             self[k] = v
 
 
@@ -418,7 +418,7 @@ class ListMovies():
                      '.ps','.qt','.ram','.rm','.rmvb','.swf','.ts','.vfw',
                      '.vid','.video','.viv','.vivo','.vob','.vro','.wm',
                      '.wmv','.wmx','.wrap','.wvx','.wx','.x264','.xvid']
-        self.file_ext = [ unicode(ext) for ext in self.file_ext ]
+        self.file_ext = [ str(ext) for ext in self.file_ext ]
 
         self.forbidden_words = ['divx','dvdrip','xvid','ts','dvdscr',
                      'cam','dvdscr','xvid','aac','r5']
@@ -459,7 +459,7 @@ class ListMovies():
         self.log.info("loading cache_path")
         try:
             with open(self.cache_path_fn,'r') as f:
-                self.cache_path = cPickle.load(f)
+                self.cache_path = cPickle.load(f)   #, encoding='latin-1')
             self.log.info("cache_path file loaded successfully")
         except:
             self.log.debug("cache_path not loaded ->  empty initilazation")
@@ -468,7 +468,7 @@ class ListMovies():
 
     def _save_cache_path(self):
         self.log.info("saving cache_path")
-        with open(self.cache_path_fn,'w') as f:
+        with open(self.cache_path_fn,'wb') as f:
             cPickle.dump(self.cache_path,f)
         self.log.info("cache_path saved")
 
@@ -485,7 +485,7 @@ class ListMovies():
 
     def _save_cache_hash(self):
         self.log.info("saving cache_hash")
-        with open(self.cache_hash_fn,'w') as f:
+        with open(self.cache_hash_fn,'wb') as f:
             cPickle.dump(self.cache_hash,f)
         self.log.info("cache_hash saved")
 
@@ -493,8 +493,8 @@ class ListMovies():
     # delete self.cache_path items pointing whose hash isnt pointing
     # to an self.cache_hash key
         self.log.info("synchronizing caches")
-        files = [ f for f, v in self.cache_path.iteritems() if \
-                    not self.cache_hash.has_key(v['hash']) ]
+        files = [ f for f, v in self.cache_path.items() if \
+                    v['hash'] not in self.cache_hash ]
         for f in files:
             del self.cache_path[f]
 
@@ -517,7 +517,7 @@ class ListMovies():
         cache_path = self.cache_path
         cache_hash = self.cache_hash
 
-        files = [ f for f in files if cache_path.has_key(f)]
+        files = [ f for f in files if f in cache_path]
         self.log.debug("%d entries to delete from cache_path" % len(files) )
 
         if len(files)>0:
@@ -529,7 +529,7 @@ class ListMovies():
             if confirm:
                 for f in files:
                     cur_hash = cache_path[f]['hash']
-                    if cache_hash.has_key(cur_hash):
+                    if cur_hash in cache_hash:
                         del cache_hash[cur_hash]
                     del cache_path[f]
 
@@ -550,7 +550,7 @@ class ListMovies():
 
     #
     def flush_out_str(self, out_str):
-        sys.stdout.write( (out_str+'\r').encode('utf-8') )
+        sys.stdout.write( (out_str+'\r'))   #.encode('utf-8') )
         sys.stdout.flush()
 
     # ********** CACHE UPDATERS  *********************************************
@@ -576,7 +576,7 @@ class ListMovies():
         cache_hash = self.cache_hash
         for path in abs_paths:
 
-            if not( cache_path.has_key(path) and \
+            if not( path in cache_path and \
                     os.path.getmtime(path) < cache_path[path]['last_update']):
 
                 self.log.info("adding new path to cache: %s" % path)
@@ -588,7 +588,7 @@ class ListMovies():
                                    'last_update':time.time() } )
 
                 # setting default keys.values in cache
-                if not cache_hash.has_key(cur_hash):
+                if cur_hash not in cache_hash:
                     self.log.debug("adding hash entry %s for file: %s" % ( \
                             str(cur_hash), path ) )
 
@@ -603,7 +603,7 @@ class ListMovies():
     # again only 6 hours after
 
         cache = self.cache_hash
-        hashs = [ h for h in cache.keys() if h and
+        hashs = [ h for h in cache.keys() if
             not cache[h]['o_title'] and \
                  cache[h]['o_check'] < time.time()-3600*6 ]
 
@@ -614,7 +614,7 @@ class ListMovies():
             now = time.time()
             cache[h]['o_check'] = now
 
-            if data.has_key(h):
+            if h in data:
                 info = data[h]
                 if info:
                     try:
@@ -624,7 +624,7 @@ class ListMovies():
                         cache[h].update( open_info )
 
                     except:
-                        self.log.debug("faild to update (%s) open info" +\
+                        self.log.debug("failed to update (%s) open info" +\
                                 " with open answer %s " % (str(h),str(info)) )
                         pass
 
@@ -635,13 +635,13 @@ class ListMovies():
     def status_ok(self, ans):
         status = False
         try:
-            if ans.has_key("status") and ans["status"] == "200 OK":
+            if "status" in ans and ans["status"] == "200 OK":
                 self.log.debug("OpenSubtitles answer status OK")
                 status = True
             else:
                 self.log.warning("OpenSubtitles answer status DOWN")
 
-        except Exception, e:
+        except Exception as e:
             self.log.error(str(e))
 
         finally:
@@ -649,7 +649,7 @@ class ListMovies():
 
     def login(self, user="", password=""):
         try:
-            server = xmlrpclib.ServerProxy(OPENSUBTITLE_DOMAIN)
+            server = client.ServerProxy(OPENSUBTITLE_DOMAIN)
             log    = server.LogIn(user,password,'en',OPENSUBTITLE_USER_AGENT)
 
             if self.status_ok(log):
@@ -659,10 +659,10 @@ class ListMovies():
             else:
                 raise LoginError(str(log))
 
-        except LoginError, e:
+        except LoginError as e:
             self.log.warning( str(e)  )
 
-        except Exception, e:
+        except Exception as e:
             self.log.error("OpenSubtitles login process DOWN: %s" % str(e))
 
 
@@ -671,7 +671,7 @@ class ListMovies():
             try:
                 self.server.LogOut(self.token)
                 self.log.debug("OpenSubtitles logout OK")
-            except Exception, e:
+            except Exception as e:
                 self.log.warning("OpenSubtitles logout process DOWN, %s" % \
                         str(e))
 
@@ -684,7 +684,7 @@ class ListMovies():
                         len(hashs))
                 try:
                     self.login()
-                    for k in range( len(hashs)/150+1 ):
+                    for k in range( len(hashs)//150+1 ):
                         res = self.server.CheckMovieHash( self.token,
                                 hashs[150*k:(150*(k+1))] )
                         data.update( res['data'] )
@@ -694,7 +694,7 @@ class ListMovies():
                             "from opensubtitles")
                     pass
 
-                for k, v in data.iteritems():
+                for k, v in data.items():
                     if len(v)==0: data[k]=None
 
             return(data)
@@ -706,7 +706,7 @@ class ListMovies():
     # [cache_path] * ----> 1 [cache_hash]
     # return a dictionary, 'path', 'cache_time', 'file_time'
 
-        path = [ (k,v['last_update']) for k,v in self.cache_path.iteritems() \
+        path = [ (k,v['last_update']) for k,v in self.cache_path.items() \
                 if v['hash'] == cur_hash and os.path.exists(k) ]
 
         if len(path)>0:
@@ -735,7 +735,7 @@ class ListMovies():
 
         cache = self.cache_hash
         hashs = []
-        for h,v in cache.iteritems():
+        for h,v in cache.items():
 
             p_info = self.path_from_hash(h)
             if p_info:
@@ -816,10 +816,10 @@ class ListMovies():
                     self.__fill_metadata( cur_hash, None )
                     cache_hash[cur_hash]['g_unsure'] = True
 
-        except imdb.IMDbError, e:
+        except imdb.IMDbError as e:
             print( "Connection error, current movie: [%s]" % \
                     imdb_id if imdb_id else guess['g_title'] )
-            print e
+            print(e)
             self.save_cache()
             sys.exit(2)
 
@@ -836,7 +836,7 @@ class ListMovies():
 
         _results = [ r for r in results if isinstance(r,imdb.Movie.Movie) ]
         if _guessed_year:
-            _results = [ r for r in _results if r.has_key('year') \
+            _results = [ r for r in _results if 'year' in r \
                                         and r['year'] == _guessed_year ]
 
         _best_ratio  = 0
@@ -1014,9 +1014,9 @@ class ListMovies():
                 print( '--> nothing found!')
                 return( self.__manual_confirm( f, ask=True ) )
 
-        except imdb.IMDbError, e:
+        except imdb.IMDbError as e:
             print( "Connexion error")
-            print e
+            print(e)
             return( self.__manual_confirm( f, ask=True ) )
 
     # ********** UPLOAD HASH TO OPENSUBTITLES ********************************
@@ -1059,7 +1059,7 @@ class ListMovies():
 
                     self.save_cache()
 
-                except Exception, e:
+                except Exception as e:
                     print("!!! Error when uploading hash to opensubtitles")
                     print( e )
                     if self.token:
@@ -1143,7 +1143,7 @@ class ListMovies():
     # @param ref: output[0] of download_subtitles_query
     # @param subs: result['data'] of a SearchSubtitles XMLRPC call
 
-        for k, v in ref.iteritems():
+        for k, v in ref.items():
 
             keep = [ s for s in subs if s['MovieHash']==v['hash'] ]
             if len(keep)==0:
@@ -1161,7 +1161,7 @@ class ListMovies():
 
 
         sub_ids = set([])
-        for r, v in ref.iteritems():
+        for r, v in ref.items():
             if v['keep']:
                 sub_ids.update( v['keep'] )
 
@@ -1175,7 +1175,7 @@ class ListMovies():
 
         try:
             result = self.server.DownloadSubtitles(self.token,sub_ids)
-        except Exception, e:
+        except Exception as e:
             self.log.error("OpenSubtitle download sub error" % str(e) )
             return( None )
 
@@ -1195,7 +1195,7 @@ class ListMovies():
     # @param red: output of download_subititles_query
     # @param subs: list of decompressed subs [{'IDSubtitleFile':,'Data'}]
 
-        for k, v in ref.iteritems():
+        for k, v in ref.items():
             keep = v['keep']
             if keep:
                 for i in range(len(keep)):
@@ -1219,7 +1219,7 @@ class ListMovies():
                 if not arg:
                     continue        #we don't want empty arg
                 encoding = locale.getdefaultlocale()[1]
-                if encoding: arg = arg.decode( encoding )
+#                if encoding: arg = arg.decode( encoding )
 
                 real_path = os.path.expanduser(arg)
                 self.log.info("path expanded: %s" % real_path )
@@ -1238,7 +1238,7 @@ class ListMovies():
                     result.append(arg)
 
         result = [ r for r in result if \
-                os.path.exists(r) and os.path.getsize(r)>0L ]
+                os.path.exists(r) and os.path.getsize(r)>0 ]
 
         return result
 
@@ -1364,7 +1364,7 @@ class ListMovies():
                        'header':self.RED + '/!\\ ' + self.END if \
                                h['g_unsure'] else '',
                        'title':(self.MAGEN if h['o_imdb_id'] \
-                               else self.YELLOW)+to_ascii(h['m_title'])+\
+                               else self.YELLOW)+to_ascii(h['m_title']).decode('utf-8')+\
                                self.END,
                        'rating':str(h['m_rating']),
                        'year':h['m_year'],
@@ -1401,12 +1401,12 @@ class ListMovies():
             out_str = out_str % values_dict
         else:
             out_str = u"%(header)s%(title)s (%(filename)s)\n" % values_dict
-        sys.stdout.write(out_str.encode('utf-8'))
+        sys.stdout.write(out_str)   #.encode('utf-8'))
         if self.disp_outline and h['m_short_summary']:
-            sys.stdout.write(unicode( \
-                    '*** ' + h['m_short_summary']+'\n').encode('utf-8'))
+            sys.stdout.write(str( \
+                    '*** ' + h['m_short_summary']+'\n'))    #.encode('utf-8'))
 
-    def html_build(self, files):
+    def html_print(self, files):
     # Show the list of files, using metadata according to arguments
 
         cell = u"<td width=200 height=250><a href=\"%(imdb)s\">\
@@ -1447,8 +1447,6 @@ class ListMovies():
                     out_file.write( finalcell )
                 count += 1
             out_file.write("</tr></table>")
-
-    def html_show(self):
         webbrowser.open_new_tab( "file://%s" % self.html_fn )
 
     def imdb_show(self, files):
@@ -1513,10 +1511,8 @@ if __name__ == "__main__":
     elif options.download:
         LM.download_subtitle(files, options.download)
 
-    elif options.show or options.html_build:
-        LM.html_build(files)
-        if options.show:
-            LM.html_show()
+    elif options.show:
+        LM.html_print(files)
 
     elif options.show_imdb:
         LM.imdb_show(files)
